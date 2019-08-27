@@ -1,0 +1,148 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+buildscript {
+    repositories {
+        maven {
+          url "https://maven.oakland.edu/nexus/content/groups/public"
+          name "nexus"
+          credentials {
+            username "$mavenUser"
+            password "$mavenPassword"
+          }
+        }
+
+        mavenLocal()
+        mavenCentral()
+    }
+    dependencies {
+      classpath 'org.owasp:dependency-check-gradle:3.1.1'
+    }
+}
+
+plugins {
+  id 'java'
+  id 'war'
+  id 'maven-publish'
+  id 'maven'
+  id 'com.diffplug.gradle.spotless' version '3.14.0'
+  id 'com.moowork.node' version '1.2.0'
+  id 'io.franzbecker.gradle-lombok' version '1.14'
+  id 'io.spring.dependency-management' version '1.0.6.RELEASE'
+  id 'org.springframework.boot' version '2.1.1.RELEASE'
+  id "net.linguica.maven-settings" version "0.5"
+}
+
+node {
+  // Version of node to use
+  version = '10.14.2'
+
+  // Base URL for fetching node distributions (change if you have a mirror)
+  distBaseUrl = 'https://nodejs.org/dist'
+
+  // If true, it will download node using above parameters
+  // If false, it will try to use globally installed node
+  download = true
+
+  // Set the work directory where node_modules should be located
+  workDir = file("${project.buildDir}/nodejs")
+
+  // Set the work directory for Yarn
+  npmWorkDir = file("${project.buildDir}/npm")
+
+  nodeModulesDir = file("src/main/react")
+}
+
+group = 'edu.oakland'
+version = '3.0.1'
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+publishing {
+    publications {
+        mavenWeb(MavenPublication) {
+            from components.web
+        }
+    }
+    repositories {
+        maven {
+          url "https://maven.oakland.edu/nexus/content/repositories/uPortal"
+          name "nexus"
+          credentials {
+            username "$mavenUser"
+            password "$mavenPassword"
+          }
+        }
+    }
+}
+
+repositories {
+        
+     maven { 
+       url "https://maven.oakland.edu/nexus/content/groups/public"  
+       name "nexus"
+       credentials {
+         username "$mavenUser"
+         password "$mavenPassword"
+       }
+     }
+
+     maven { 
+       url "https://oss.sonatype.org/content/repositories/snapshots" 
+     }
+}
+
+processResources {
+  filesMatching("**/application.properties") {
+    def props = new Properties()
+
+	file(System.getenv("PORTAL_HOME") + "/global.properties").withInputStream {
+		props.load(it)
+	}
+
+	file(System.getenv("PORTAL_HOME") + "/uPortal.properties").withInputStream {
+		props.load(it)
+	}
+
+	filter(ReplaceTokens, tokens: props)
+
+  }
+}
+
+bootWar {
+  archiveName project.name + '.war'
+}
+
+spotless {
+  java {
+    googleJavaFormat()
+    importOrder "edu", "java", "com org", ""
+    removeUnusedImports()
+    trimTrailingWhitespace()
+  }
+}
+
+task runBuild(type: NpmTask) {
+    args = ['run', 'build']
+}
+
+task copyTask(type: Copy) {
+    from 'src/main/react/build/static'
+    into 'src/main/webapp'
+}
+
+clean.finalizedBy 'npm_install'
+npm_install.finalizedBy 'runBuild'
+runBuild.finalizedBy 'copyTask'
+copyTask.finalizedBy 'spotlessApply'
+
+dependencies {
+  implementation 'org.springframework.boot:spring-boot-starter-data-rest'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+  implementation 'org.jasig.portal:uPortal-soffit-renderer:5.4.1'
+  implementation 'org.jasypt:jasypt:1.9.2'
+  implementation 'edu.oakland:soffit-auth:0.0.3'
+  compile('org.springframework.boot:spring-boot-starter-jdbc')
+  	runtimeOnly 'com.oracle:ojdbc8:12.2.0.1.0'
+	  providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+	  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
